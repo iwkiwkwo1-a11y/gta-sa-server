@@ -19,6 +19,8 @@ native Float:floatstr(const string[]);
 #define DIALOG_BANK_WITHDRAW 5
 #define DIALOG_VEHICLE_MARKET 6
 #define DIALOG_HP_MENU 7
+#define DIALOG_GOFOOD 8
+#define DIALOG_INVENTORY 9
 
 // --- Enums & Variables ---
 enum pInfo
@@ -33,6 +35,9 @@ enum pInfo
     Float:pVehY,
     Float:pVehZ,
     Float:pVehA,
+    pSnack,
+    pWater,
+    pVehFuel,
     pLogged
 }
 new PlayerInfo[MAX_PLAYERS][pInfo];
@@ -139,6 +144,9 @@ public OnPlayerConnect(playerid)
     PlayerInfo[playerid][pHunger] = 100;
     PlayerInfo[playerid][pVehModel] = 0;
     PlayerInfo[playerid][pThirst] = 100;
+    PlayerInfo[playerid][pSnack] = 0;
+    PlayerInfo[playerid][pWater] = 0;
+    PlayerInfo[playerid][pVehFuel] = 100;
     PlayerInfo[playerid][pLogged] = 0;
     PhoneActive[playerid] = false;
     HasPackage[playerid] = false;
@@ -296,7 +304,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         if(f)
         {
             new line[256];
-            format(line, sizeof(line), "Password=%s\nMoney=500\nBank=0\nHunger=100\nThirst=100\nVehModel=0\nVehX=0.0\nVehY=0.0\nVehZ=0.0\nVehA=0.0\n", inputtext);
+            format(line, sizeof(line), "Password=%s\nMoney=500\nBank=0\nHunger=100\nThirst=100\nVehModel=0\nVehX=0.0\nVehY=0.0\nVehZ=0.0\nVehA=0.0\nSnack=0\nWater=0\nVehFuel=100\n", inputtext);
             fwrite(f, line);
             fclose(f);
 
@@ -307,6 +315,9 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             PlayerInfo[playerid][pHunger] = 100;
             PlayerInfo[playerid][pThirst] = 100;
             PlayerInfo[playerid][pVehModel] = 0;
+            PlayerInfo[playerid][pSnack] = 0;
+            PlayerInfo[playerid][pWater] = 0;
+            PlayerInfo[playerid][pVehFuel] = 100;
             format(PlayerInfo[playerid][pPassword], 129, "%s", inputtext);
 
             GivePlayerMoney(playerid, 500);
@@ -339,7 +350,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         if(!response)
         {
             // Kembali ke Menu HP
-            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
+            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Go-Food\n5. Tutup Handphone", "Pilih", "Tutup");
             return 1;
         }
 
@@ -411,7 +422,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         if(!response)
         {
             // Kembali ke Menu HP
-            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
+            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Go-Food\n5. Tutup Handphone", "Pilih", "Tutup");
             return 1;
         }
         new model = 0, cost = 0;
@@ -440,6 +451,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         PlayerInfo[playerid][pVehY] = y;
         PlayerInfo[playerid][pVehZ] = z;
         PlayerInfo[playerid][pVehA] = a;
+        PlayerInfo[playerid][pVehFuel] = 100;
 
         PlayerVehicle[playerid] = CreateVehicle(model, x, y, z, a, -1, -1, 0);
         PutPlayerInVehicle(playerid, PlayerVehicle[playerid], 0);
@@ -450,7 +462,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         SaveAccount(playerid);
 
         // Return to HP menu after buy
-        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
+        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Go-Food\n5. Tutup Handphone", "Pilih", "Tutup");
         return 1;
     }
 
@@ -501,7 +513,11 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             TextDrawHideForPlayer(playerid, PhoneTD[1]);
             PhoneActive[playerid] = false;
         }
-        else if(listitem == 3) // Tutup Handphone
+        else if(listitem == 3) // Go-Food App
+        {
+            ShowPlayerDialog(playerid, DIALOG_GOFOOD, DIALOG_STYLE_LIST, "Go-Food App", "Beli Snack ($20)\nBeli Air Minum ($10)", "Beli", "Kembali");
+        }
+        else if(listitem == 4) // Tutup Handphone
         {
             TextDrawHideForPlayer(playerid, PhoneTD[0]);
             TextDrawHideForPlayer(playerid, PhoneTD[1]);
@@ -511,47 +527,109 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         return 1;
     }
 
+    if(dialogid == DIALOG_GOFOOD)
+    {
+        if(!response)
+        {
+            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Go-Food\n5. Tutup Handphone", "Pilih", "Tutup");
+            return 1;
+        }
+
+        if(listitem == 0) // Snack
+        {
+            if(GetPlayerMoney(playerid) < 20) return SendClientMessage(playerid, COLOR_RED, "Uang Anda tidak cukup ($20).");
+            GivePlayerMoney(playerid, -20);
+            PlayerInfo[playerid][pSnack] += 1;
+            SendClientMessage(playerid, COLOR_GREEN, "Anda telah memesan Snack. (Masuk ke /tas)");
+        }
+        else if(listitem == 1) // Water
+        {
+            if(GetPlayerMoney(playerid) < 10) return SendClientMessage(playerid, COLOR_RED, "Uang Anda tidak cukup ($10).");
+            GivePlayerMoney(playerid, -10);
+            PlayerInfo[playerid][pWater] += 1;
+            SendClientMessage(playerid, COLOR_GREEN, "Anda telah memesan Air Minum. (Masuk ke /tas)");
+        }
+
+        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Go-Food\n5. Tutup Handphone", "Pilih", "Tutup");
+        return 1;
+    }
+
+    if(dialogid == DIALOG_INVENTORY)
+    {
+        if(!response) return 1;
+
+        if(listitem == 0) // Makan Snack
+        {
+            if(PlayerInfo[playerid][pSnack] < 1) return SendClientMessage(playerid, COLOR_RED, "Anda tidak memiliki snack.");
+            if(PlayerInfo[playerid][pHunger] >= 100) return SendClientMessage(playerid, COLOR_RED, "Anda belum merasa lapar.");
+
+            PlayerInfo[playerid][pSnack] -= 1;
+            PlayerInfo[playerid][pHunger] += 40;
+            if(PlayerInfo[playerid][pHunger] > 100) PlayerInfo[playerid][pHunger] = 100;
+
+            new Float:hp;
+            GetPlayerHealth(playerid, hp);
+            hp += 10.0;
+            if(hp > 100.0) hp = 100.0;
+            SetPlayerHealth(playerid, hp);
+
+            SendClientMessage(playerid, COLOR_GREEN, "Anda memakan snack. Rasa lapar berkurang dan HP bertambah.");
+        }
+        else if(listitem == 1) // Minum Air
+        {
+            if(PlayerInfo[playerid][pWater] < 1) return SendClientMessage(playerid, COLOR_RED, "Anda tidak memiliki air minum.");
+            if(PlayerInfo[playerid][pThirst] >= 100) return SendClientMessage(playerid, COLOR_RED, "Anda belum merasa haus.");
+
+            PlayerInfo[playerid][pWater] -= 1;
+            PlayerInfo[playerid][pThirst] += 50;
+            if(PlayerInfo[playerid][pThirst] > 100) PlayerInfo[playerid][pThirst] = 100;
+
+            SendClientMessage(playerid, COLOR_GREEN, "Anda meminum air. Rasa haus berkurang.");
+        }
+        return 1;
+    }
+
     return 0;
 }
 
-CMD:belimakan(playerid, params[])
+CMD:isibensin(playerid, params[])
 {
     if(!PlayerInfo[playerid][pLogged]) return SendClientMessage(playerid, COLOR_RED, "Anda harus login!");
+    if(!IsPlayerInAnyVehicle(playerid)) return SendClientMessage(playerid, COLOR_RED, "Anda harus berada di dalam kendaraan!");
 
-    // Sebagai permulaan kita jadikan global, nanti bisa pakai IsPlayerInRangeOfPoint ke restoran
-    new cost = 20;
-    if(GetPlayerMoney(playerid) < cost) return SendClientMessage(playerid, COLOR_RED, "Uang Anda tidak cukup ($20).");
-    if(PlayerInfo[playerid][pHunger] >= 100) return SendClientMessage(playerid, COLOR_RED, "Anda belum merasa lapar.");
+    new veh = GetPlayerVehicleID(playerid);
+    if(veh != PlayerVehicle[playerid]) return SendClientMessage(playerid, COLOR_RED, "Ini bukan kendaraan Anda! Anda hanya bisa mengisi bensin kendaraan sendiri.");
+
+    // Idlewood Gas Station coordinates
+    if(!IsPlayerInRangeOfPoint(playerid, 15.0, 1944.32, -1772.92, 13.39)) return SendClientMessage(playerid, COLOR_RED, "Anda tidak berada di pom bensin Idlewood!");
+
+    if(PlayerInfo[playerid][pVehFuel] >= 100) return SendClientMessage(playerid, COLOR_RED, "Bensin Anda sudah penuh!");
+
+    new cost = (100 - PlayerInfo[playerid][pVehFuel]) * 1; // $1 per liter
+    if(GetPlayerMoney(playerid) < cost) return SendClientMessage(playerid, COLOR_RED, "Uang Anda tidak cukup!");
 
     GivePlayerMoney(playerid, -cost);
-    PlayerInfo[playerid][pHunger] += 40;
-    if(PlayerInfo[playerid][pHunger] > 100) PlayerInfo[playerid][pHunger] = 100;
+    PlayerInfo[playerid][pVehFuel] = 100;
 
-    SendClientMessage(playerid, COLOR_GREEN, "Anda telah membeli makanan seharga $20.");
+    // Nyalakan mesin jika tadinya mati
+    new engine, lights, alarm, doors, bonnet, boot, objective;
+    GetVehicleParamsEx(veh, engine, lights, alarm, doors, bonnet, boot, objective);
+    SetVehicleParamsEx(veh, 1, lights, alarm, doors, bonnet, boot, objective);
 
-    // Tambah darah jika makan
-    new Float:hp;
-    GetPlayerHealth(playerid, hp);
-    hp += 10.0;
-    if(hp > 100.0) hp = 100.0;
-    SetPlayerHealth(playerid, hp);
+    new msg[128];
+    format(msg, sizeof(msg), "Kendaraan selesai diisi full bensin seharga $%d.", cost);
+    SendClientMessage(playerid, COLOR_GREEN, msg);
 
     return 1;
 }
 
-CMD:beliminum(playerid, params[])
+CMD:tas(playerid, params[])
 {
     if(!PlayerInfo[playerid][pLogged]) return SendClientMessage(playerid, COLOR_RED, "Anda harus login!");
 
-    new cost = 10;
-    if(GetPlayerMoney(playerid) < cost) return SendClientMessage(playerid, COLOR_RED, "Uang Anda tidak cukup ($10).");
-    if(PlayerInfo[playerid][pThirst] >= 100) return SendClientMessage(playerid, COLOR_RED, "Anda belum merasa haus.");
-
-    GivePlayerMoney(playerid, -cost);
-    PlayerInfo[playerid][pThirst] += 50;
-    if(PlayerInfo[playerid][pThirst] > 100) PlayerInfo[playerid][pThirst] = 100;
-
-    SendClientMessage(playerid, COLOR_GREEN, "Anda telah membeli minuman seharga $10.");
+    new str[256];
+    format(str, sizeof(str), "Snack (Stok: %d)\nAir Minum (Stok: %d)", PlayerInfo[playerid][pSnack], PlayerInfo[playerid][pWater]);
+    ShowPlayerDialog(playerid, DIALOG_INVENTORY, DIALOG_STYLE_LIST, "Isi Tas", str, "Gunakan", "Tutup");
     return 1;
 }
 
@@ -589,6 +667,7 @@ CMD:ambilpaket(playerid, params[])
     if(!PlayerInfo[playerid][pLogged]) return SendClientMessage(playerid, COLOR_RED, "Anda harus login!");
 
     if(HasPackage[playerid]) return SendClientMessage(playerid, COLOR_RED, "Anda sedang membawa paket! Antarkan dulu ke tujuan.");
+    if(OjolState[playerid] != 0) return SendClientMessage(playerid, COLOR_RED, "Anda sedang menjalankan pekerjaan ojol! Selesaikan dulu.");
 
     // Asumsi pusat paket di dekat rumah CJ (Grove Street)
     if(IsPlayerInRangeOfPoint(playerid, 15.0, 2495.33, -1669.75, 13.33))
@@ -619,7 +698,7 @@ CMD:hp(playerid, params[])
         SendClientMessage(playerid, COLOR_YELLOW, "* Anda mengeluarkan handphone.");
 
         // Buka menu HP
-        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
+        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Go-Food\n5. Tutup Handphone", "Pilih", "Tutup");
     }
     else
     {
@@ -648,7 +727,7 @@ public LoadAccount(playerid, const password[])
     if(f)
     {
         new line[256], key[64], val[129];
-        new storedPass[129], money, bank, hunger, thirst, vmod;
+        new storedPass[129], money, bank, hunger, thirst, vmod, snack, water, fuel;
         new Float:vx, Float:vy, Float:vz, Float:va;
 
         while(fread(f, line))
@@ -670,6 +749,9 @@ public LoadAccount(playerid, const password[])
                 else if(strcmp(key, "VehY", true) == 0) vy = floatstr(val);
                 else if(strcmp(key, "VehZ", true) == 0) vz = floatstr(val);
                 else if(strcmp(key, "VehA", true) == 0) va = floatstr(val);
+                else if(strcmp(key, "Snack", true) == 0) snack = strval(val);
+                else if(strcmp(key, "Water", true) == 0) water = strval(val);
+                else if(strcmp(key, "VehFuel", true) == 0) fuel = strval(val);
             }
         }
         fclose(f);
@@ -685,6 +767,9 @@ public LoadAccount(playerid, const password[])
             PlayerInfo[playerid][pVehY] = vy;
             PlayerInfo[playerid][pVehZ] = vz;
             PlayerInfo[playerid][pVehA] = va;
+            PlayerInfo[playerid][pSnack] = snack;
+            PlayerInfo[playerid][pWater] = water;
+            PlayerInfo[playerid][pVehFuel] = fuel == 0 && vmod != 0 ? 100 : fuel;
             PlayerInfo[playerid][pLogged] = 1;
             format(PlayerInfo[playerid][pPassword], 129, "%s", password);
 
@@ -714,9 +799,10 @@ public SaveAccount(playerid)
     if(f)
     {
         new line[256];
-        format(line, sizeof(line), "Password=%s\nMoney=%d\nBank=%d\nHunger=%d\nThirst=%d\nVehModel=%d\nVehX=%f\nVehY=%f\nVehZ=%f\nVehA=%f\n",
+        format(line, sizeof(line), "Password=%s\nMoney=%d\nBank=%d\nHunger=%d\nThirst=%d\nVehModel=%d\nVehX=%f\nVehY=%f\nVehZ=%f\nVehA=%f\nSnack=%d\nWater=%d\nVehFuel=%d\n",
             PlayerInfo[playerid][pPassword], PlayerInfo[playerid][pMoney], PlayerInfo[playerid][pBank], PlayerInfo[playerid][pHunger], PlayerInfo[playerid][pThirst],
-            PlayerInfo[playerid][pVehModel], PlayerInfo[playerid][pVehX], PlayerInfo[playerid][pVehY], PlayerInfo[playerid][pVehZ], PlayerInfo[playerid][pVehA]);
+            PlayerInfo[playerid][pVehModel], PlayerInfo[playerid][pVehX], PlayerInfo[playerid][pVehY], PlayerInfo[playerid][pVehZ], PlayerInfo[playerid][pVehA],
+            PlayerInfo[playerid][pSnack], PlayerInfo[playerid][pWater], PlayerInfo[playerid][pVehFuel]);
         fwrite(f, line);
         fclose(f);
     }
@@ -729,6 +815,7 @@ public DecreaseNeeds()
     {
         if(IsPlayerConnected(i) && PlayerInfo[i][pLogged])
         {
+            // Kebutuhan karakter
             PlayerInfo[i][pHunger] -= 2;
             PlayerInfo[i][pThirst] -= 3;
 
@@ -741,6 +828,35 @@ public DecreaseNeeds()
                 GetPlayerHealth(i, hp);
                 SetPlayerHealth(i, hp - 5.0);
                 SendClientMessage(i, COLOR_RED, "Anda merasa sangat lapar / haus! Darah anda berkurang.");
+            }
+
+            // Kebutuhan bensin kendaraan jika pemain sedang menyetir kendaraan pribadi
+            if(IsPlayerInAnyVehicle(i) && GetPlayerState(i) == PLAYER_STATE_DRIVER)
+            {
+                new veh = GetPlayerVehicleID(i);
+                if(veh == PlayerVehicle[i])
+                {
+                    if(PlayerInfo[i][pVehFuel] > 0)
+                    {
+                        PlayerInfo[i][pVehFuel] -= 1;
+                        if(PlayerInfo[i][pVehFuel] <= 0)
+                        {
+                            PlayerInfo[i][pVehFuel] = 0;
+                            // Matikan mesin
+                            new engine, lights, alarm, doors, bonnet, boot, objective;
+                            GetVehicleParamsEx(veh, engine, lights, alarm, doors, bonnet, boot, objective);
+                            SetVehicleParamsEx(veh, 0, lights, alarm, doors, bonnet, boot, objective);
+                            SendClientMessage(i, COLOR_RED, "Bensin kendaraan Anda habis! Mesin mati otomatis.");
+                        }
+                    }
+                    else
+                    {
+                        // Pastikan mesin tetap mati jika dikendarai
+                        new engine, lights, alarm, doors, bonnet, boot, objective;
+                        GetVehicleParamsEx(veh, engine, lights, alarm, doors, bonnet, boot, objective);
+                        if(engine != 0) SetVehicleParamsEx(veh, 0, lights, alarm, doors, bonnet, boot, objective);
+                    }
+                }
             }
         }
     }
