@@ -18,6 +18,7 @@ native Float:floatstr(const string[]);
 #define DIALOG_BANK_DEPOSIT 4
 #define DIALOG_BANK_WITHDRAW 5
 #define DIALOG_VEHICLE_MARKET 6
+#define DIALOG_HP_MENU 7
 
 // --- Enums & Variables ---
 enum pInfo
@@ -335,12 +336,18 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 
     if(dialogid == DIALOG_BANK_MENU)
     {
-        if(!response) return 1;
+        if(!response)
+        {
+            // Kembali ke Menu HP
+            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
+            return 1;
+        }
+
         if(listitem == 0) // Cek Saldo
         {
             new msg[128];
             format(msg, sizeof(msg), "Saldo Bank Anda saat ini: $%d", PlayerInfo[playerid][pBank]);
-            ShowPlayerDialog(playerid, 0, DIALOG_STYLE_MSGBOX, "Bank", msg, "Tutup", "");
+            ShowPlayerDialog(playerid, DIALOG_BANK_MENU, DIALOG_STYLE_MSGBOX, "M-Banking", msg, "Kembali", "");
         }
         else if(listitem == 1) // Setor
         {
@@ -355,7 +362,11 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 
     if(dialogid == DIALOG_BANK_DEPOSIT)
     {
-        if(!response) return 1;
+        if(!response)
+        {
+            ShowPlayerDialog(playerid, DIALOG_BANK_MENU, DIALOG_STYLE_LIST, "M-Banking", "1. Cek Saldo\n2. Setor Uang\n3. Tarik Uang", "Pilih", "Kembali");
+            return 1;
+        }
         new amount = strval(inputtext);
         if(amount < 1) return SendClientMessage(playerid, COLOR_RED, "Jumlah tidak valid!");
         if(GetPlayerMoney(playerid) < amount) return SendClientMessage(playerid, COLOR_RED, "Uang cash Anda tidak cukup!");
@@ -367,12 +378,18 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         format(msg, sizeof(msg), "Anda telah menyetor $%d. Saldo saat ini: $%d", amount, PlayerInfo[playerid][pBank]);
         SendClientMessage(playerid, COLOR_GREEN, msg);
         SaveAccount(playerid);
+
+        ShowPlayerDialog(playerid, DIALOG_BANK_MENU, DIALOG_STYLE_LIST, "M-Banking", "1. Cek Saldo\n2. Setor Uang\n3. Tarik Uang", "Pilih", "Kembali");
         return 1;
     }
 
     if(dialogid == DIALOG_BANK_WITHDRAW)
     {
-        if(!response) return 1;
+        if(!response)
+        {
+            ShowPlayerDialog(playerid, DIALOG_BANK_MENU, DIALOG_STYLE_LIST, "M-Banking", "1. Cek Saldo\n2. Setor Uang\n3. Tarik Uang", "Pilih", "Kembali");
+            return 1;
+        }
         new amount = strval(inputtext);
         if(amount < 1) return SendClientMessage(playerid, COLOR_RED, "Jumlah tidak valid!");
         if(PlayerInfo[playerid][pBank] < amount) return SendClientMessage(playerid, COLOR_RED, "Saldo bank Anda tidak cukup!");
@@ -384,12 +401,19 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         format(msg, sizeof(msg), "Anda telah menarik $%d. Saldo saat ini: $%d", amount, PlayerInfo[playerid][pBank]);
         SendClientMessage(playerid, COLOR_GREEN, msg);
         SaveAccount(playerid);
+
+        ShowPlayerDialog(playerid, DIALOG_BANK_MENU, DIALOG_STYLE_LIST, "M-Banking", "1. Cek Saldo\n2. Setor Uang\n3. Tarik Uang", "Pilih", "Kembali");
         return 1;
     }
 
     if(dialogid == DIALOG_VEHICLE_MARKET)
     {
-        if(!response) return 1;
+        if(!response)
+        {
+            // Kembali ke Menu HP
+            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
+            return 1;
+        }
         new model = 0, cost = 0;
         new vname[32];
         if(listitem == 0) { model = 462; cost = 300; format(vname, sizeof(vname), "Faggio"); } // Faggio
@@ -424,20 +448,70 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         format(msg, sizeof(msg), "Anda telah membeli %s seharga $%d.", vname, cost);
         SendClientMessage(playerid, COLOR_GREEN, msg);
         SaveAccount(playerid);
+
+        // Return to HP menu after buy
+        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
+        return 1;
+    }
+
+    if(dialogid == DIALOG_HP_MENU)
+    {
+        if(!response)
+        {
+            // Tutup HP via button
+            TextDrawHideForPlayer(playerid, PhoneTD[0]);
+            TextDrawHideForPlayer(playerid, PhoneTD[1]);
+            PhoneActive[playerid] = false;
+            SendClientMessage(playerid, COLOR_YELLOW, "* Anda menyimpan handphone.");
+            return 1;
+        }
+
+        if(listitem == 0) // M-Banking
+        {
+            ShowPlayerDialog(playerid, DIALOG_BANK_MENU, DIALOG_STYLE_LIST, "M-Banking", "1. Cek Saldo\n2. Setor Uang\n3. Tarik Uang", "Pilih", "Kembali");
+        }
+        else if(listitem == 1) // Toko Kendaraan Online
+        {
+            ShowPlayerDialog(playerid, DIALOG_VEHICLE_MARKET, DIALOG_STYLE_LIST, "Dealership App", "Faggio (Motor) - $300\nSanchez (Motor) - $800\nSentinel (Mobil) - $1500\nTahoma (Mobil) - $1200", "Beli", "Kembali");
+        }
+        else if(listitem == 2) // Aplikasi Ojol
+        {
+            if(!IsPlayerInAnyVehicle(playerid))
+            {
+                SendClientMessage(playerid, COLOR_RED, "Anda harus berada di dalam kendaraan (motor/mobil) untuk menerima orderan ojol.");
+                return 1;
+            }
+            if(OjolState[playerid] != 0)
+            {
+                SendClientMessage(playerid, COLOR_RED, "Anda sedang menjalankan orderan ojol!");
+                return 1;
+            }
+
+            new rand = random(sizeof(OjolPickup));
+            SetPlayerCheckpoint(playerid, OjolPickup[rand][0], OjolPickup[rand][1], OjolPickup[rand][2], 4.0);
+
+            // Spawn Actor (NPC Pelanggan)
+            OjolActor[playerid] = CreateActor(random(299), OjolPickup[rand][0], OjolPickup[rand][1], OjolPickup[rand][2], 0.0);
+
+            OjolState[playerid] = 1;
+            SendClientMessage(playerid, COLOR_YELLOW, "Orderan ojol diterima! Jemput pelanggan di titik merah di minimap.");
+
+            // Tutup UI HP otomatis
+            TextDrawHideForPlayer(playerid, PhoneTD[0]);
+            TextDrawHideForPlayer(playerid, PhoneTD[1]);
+            PhoneActive[playerid] = false;
+        }
+        else if(listitem == 3) // Tutup Handphone
+        {
+            TextDrawHideForPlayer(playerid, PhoneTD[0]);
+            TextDrawHideForPlayer(playerid, PhoneTD[1]);
+            PhoneActive[playerid] = false;
+            SendClientMessage(playerid, COLOR_YELLOW, "* Anda menyimpan handphone.");
+        }
         return 1;
     }
 
     return 0;
-}
-
-CMD:bank(playerid, params[])
-{
-    if(!PlayerInfo[playerid][pLogged]) return SendClientMessage(playerid, COLOR_RED, "Anda harus login!");
-
-    // Asumsi: Bisa diakses di mana saja karena konsep hp modern (M-Banking via HP)
-    // Jika ingin dibatasi di lokasi ATM, tambahkan IsPlayerInRangeOfPoint di sini.
-    ShowPlayerDialog(playerid, DIALOG_BANK_MENU, DIALOG_STYLE_LIST, "Aplikasi Bank", "1. Cek Saldo\n2. Setor Uang\n3. Tarik Uang", "Pilih", "Tutup");
-    return 1;
 }
 
 CMD:belimakan(playerid, params[])
@@ -481,15 +555,6 @@ CMD:beliminum(playerid, params[])
     return 1;
 }
 
-CMD:belikendaraan(playerid, params[])
-{
-    if(!PlayerInfo[playerid][pLogged]) return SendClientMessage(playerid, COLOR_RED, "Anda harus login!");
-
-    // Market virtual via command
-    ShowPlayerDialog(playerid, DIALOG_VEHICLE_MARKET, DIALOG_STYLE_LIST, "Vehicle Dealership", "Faggio (Motor) - $300\nSanchez (Motor) - $800\nSentinel (Mobil) - $1500\nTahoma (Mobil) - $1200", "Beli", "Tutup");
-    return 1;
-}
-
 CMD:parkir(playerid, params[])
 {
     if(!PlayerInfo[playerid][pLogged]) return SendClientMessage(playerid, COLOR_RED, "Anda harus login!");
@@ -516,23 +581,6 @@ CMD:parkir(playerid, params[])
     {
         SendClientMessage(playerid, COLOR_RED, "Ini bukan kendaraan Anda!");
     }
-    return 1;
-}
-
-CMD:ojol(playerid, params[])
-{
-    if(!PlayerInfo[playerid][pLogged]) return SendClientMessage(playerid, COLOR_RED, "Anda harus login!");
-    if(!IsPlayerInAnyVehicle(playerid)) return SendClientMessage(playerid, COLOR_RED, "Anda harus berada di dalam kendaraan (motor/mobil) untuk menerima orderan.");
-    if(OjolState[playerid] != 0) return SendClientMessage(playerid, COLOR_RED, "Anda sedang menjalankan orderan ojol!");
-
-    new rand = random(sizeof(OjolPickup));
-    SetPlayerCheckpoint(playerid, OjolPickup[rand][0], OjolPickup[rand][1], OjolPickup[rand][2], 4.0);
-
-    // Spawn Actor (NPC Pelanggan)
-    OjolActor[playerid] = CreateActor(random(299), OjolPickup[rand][0], OjolPickup[rand][1], OjolPickup[rand][2], 0.0);
-
-    OjolState[playerid] = 1;
-    SendClientMessage(playerid, COLOR_YELLOW, "Orderan masuk! Jemput pelanggan di titik merah di minimap.");
     return 1;
 }
 
@@ -569,6 +617,9 @@ CMD:hp(playerid, params[])
         TextDrawShowForPlayer(playerid, PhoneTD[1]);
         PhoneActive[playerid] = true;
         SendClientMessage(playerid, COLOR_YELLOW, "* Anda mengeluarkan handphone.");
+
+        // Buka menu HP
+        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Handphone App", "1. M-Banking\n2. Toko Kendaraan Online\n3. Aplikasi Ojol\n4. Tutup Handphone", "Pilih", "Tutup");
     }
     else
     {
