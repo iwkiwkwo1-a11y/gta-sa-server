@@ -7,6 +7,8 @@
 #define DIALOG_BANK_MENU 4
 #define DIALOG_BANK_DEPOSIT 5
 #define DIALOG_BANK_WITHDRAW 6
+#define DIALOG_JOB_MENU 7
+#define DIALOG_VEH_MENU 8
 
 // Data enum pemain
 enum pInfo
@@ -14,7 +16,12 @@ enum pInfo
     pPassword[129],
     pMoney,
     pScore,
-    pBankMoney
+    pBankMoney,
+    pHunger,
+    pThirst,
+    pJob,
+    pAdmin,
+    pVehModel
 };
 new PlayerInfo[MAX_PLAYERS][pInfo];
 new bool:IsLoggedIn[MAX_PLAYERS];
@@ -36,11 +43,44 @@ main()
     print("----------------------------------\n");
 }
 
+// Forward deklarasi timer
+forward GlobalTimer();
+
 public OnGameModeInit()
 {
     // Konfigurasi dasar saat server menyala
     SetGameModeText("RP Mode v1.0");
     AddPlayerClass(0, 1958.3783, 1343.1572, 15.3746, 269.1425, 0, 0, 0, 0, 0, 0);
+
+    // Timer berjalan setiap 60 detik (60000 ms)
+    SetTimer("GlobalTimer", 60000, true);
+    return 1;
+}
+
+public GlobalTimer()
+{
+    for(new i = 0; i < MAX_PLAYERS; i++)
+    {
+        if(IsPlayerConnected(i) && IsLoggedIn[i])
+        {
+            // Kurangi Lapar & Haus
+            PlayerInfo[i][pHunger] -= 2;
+            PlayerInfo[i][pThirst] -= 3;
+
+            // Limit bawah
+            if(PlayerInfo[i][pHunger] < 0) PlayerInfo[i][pHunger] = 0;
+            if(PlayerInfo[i][pThirst] < 0) PlayerInfo[i][pThirst] = 0;
+
+            // Jika mencapai 0, kurangi darah
+            if(PlayerInfo[i][pHunger] == 0 || PlayerInfo[i][pThirst] == 0)
+            {
+                new Float:hp;
+                GetPlayerHealth(i, hp);
+                SetPlayerHealth(i, hp - 5.0);
+                SendClientMessage(i, 0xFF0000FF, "Anda merasa sangat lapar/haus! Darah Anda berkurang.");
+            }
+        }
+    }
     return 1;
 }
 
@@ -51,6 +91,11 @@ public OnPlayerConnect(playerid)
     PlayerInfo[playerid][pMoney] = 0;
     PlayerInfo[playerid][pScore] = 0;
     PlayerInfo[playerid][pBankMoney] = 0;
+    PlayerInfo[playerid][pHunger] = 100;
+    PlayerInfo[playerid][pThirst] = 100;
+    PlayerInfo[playerid][pJob] = 0;
+    PlayerInfo[playerid][pAdmin] = 0;
+    PlayerInfo[playerid][pVehModel] = 0;
     format(PlayerInfo[playerid][pPassword], 129, "");
 
     new file[128];
@@ -93,10 +138,120 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (strcmp(cmdtext, "/hp", true) == 0)
     {
         if (!IsLoggedIn[playerid]) return SendClientMessage(playerid, 0xFF0000FF, "Anda harus login terlebih dahulu!");
-        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Pekerjaan (Segera)\n3. Kendaraan (Segera)", "Pilih", "Tutup");
+        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
         return 1;
     }
+
+    if (strcmp(cmdtext, "/makan", true) == 0)
+    {
+        if (!IsLoggedIn[playerid]) return 1;
+        if (GetPlayerMoney(playerid) < 10) return SendClientMessage(playerid, 0xFF0000FF, "Anda butuh $10 untuk makan!");
+
+        GivePlayerMoney(playerid, -10);
+        PlayerInfo[playerid][pHunger] += 50;
+        if (PlayerInfo[playerid][pHunger] > 100) PlayerInfo[playerid][pHunger] = 100;
+        SendClientMessage(playerid, 0x00FF00FF, "Anda memakan sebuah burger. Rasa lapar berkurang.");
+        return 1;
+    }
+
+    if (strcmp(cmdtext, "/minum", true) == 0)
+    {
+        if (!IsLoggedIn[playerid]) return 1;
+        if (GetPlayerMoney(playerid) < 5) return SendClientMessage(playerid, 0xFF0000FF, "Anda butuh $5 untuk minum!");
+
+        GivePlayerMoney(playerid, -5);
+        PlayerInfo[playerid][pThirst] += 50;
+        if (PlayerInfo[playerid][pThirst] > 100) PlayerInfo[playerid][pThirst] = 100;
+        SendClientMessage(playerid, 0x00FF00FF, "Anda meminum sebotol air. Rasa haus berkurang.");
+        return 1;
+    }
+
+    // ======== SISTEM ADMIN ========
+    new cmd[128], idx;
+    cmd = strtok(cmdtext, idx);
+
+    if (strcmp(cmd, "/makeadmin", true) == 0)
+    {
+        if (!IsPlayerAdmin(playerid)) return SendClientMessage(playerid, 0xFF0000FF, "Hanya RCON Admin yang bisa menggunakan ini!");
+
+        new tmp[128];
+        tmp = strtok(cmdtext, idx);
+        if(!strlen(tmp)) return SendClientMessage(playerid, 0xFFFFFFFF, "PENGGUNAAN: /makeadmin [playerid]");
+
+        new targetid = strval(tmp);
+        if(!IsPlayerConnected(targetid) || !IsLoggedIn[targetid]) return SendClientMessage(playerid, 0xFF0000FF, "Pemain tidak ditemukan atau belum login!");
+
+        PlayerInfo[targetid][pAdmin] = 1;
+        SendClientMessage(targetid, 0x00FF00FF, "ADMIN: Anda telah dijadikan Admin oleh RCON!");
+        SendClientMessage(playerid, 0x00FF00FF, "ADMIN: Anda berhasil memberikan status Admin ke pemain.");
+        return 1;
+    }
+
+    if (strcmp(cmd, "/agivemoney", true) == 0)
+    {
+        if (PlayerInfo[playerid][pAdmin] < 1) return SendClientMessage(playerid, 0xFF0000FF, "Anda bukan Admin!");
+
+        new tmp[128], tmp2[128];
+        tmp = strtok(cmdtext, idx);
+        tmp2 = strtok(cmdtext, idx);
+
+        if(!strlen(tmp) || !strlen(tmp2)) return SendClientMessage(playerid, 0xFFFFFFFF, "PENGGUNAAN: /agivemoney [playerid] [jumlah]");
+
+        new targetid = strval(tmp);
+        new amount = strval(tmp2);
+
+        if(!IsPlayerConnected(targetid) || !IsLoggedIn[targetid]) return SendClientMessage(playerid, 0xFF0000FF, "Pemain tidak ditemukan atau belum login!");
+
+        GivePlayerMoney(targetid, amount);
+        PlayerInfo[targetid][pMoney] = GetPlayerMoney(targetid);
+
+        new msg[128];
+        format(msg, sizeof(msg), "ADMIN: Admin telah memberi Anda uang tunai sebesar $%d", amount);
+        SendClientMessage(targetid, 0x00FF00FF, msg);
+        format(msg, sizeof(msg), "ADMIN: Anda memberi $%d ke pemain %d", amount, targetid);
+        SendClientMessage(playerid, 0x00FF00FF, msg);
+        return 1;
+    }
+
+    if (strcmp(cmd, "/akick", true) == 0)
+    {
+        if (PlayerInfo[playerid][pAdmin] < 1) return SendClientMessage(playerid, 0xFF0000FF, "Anda bukan Admin!");
+
+        new tmp[128];
+        tmp = strtok(cmdtext, idx);
+
+        if(!strlen(tmp)) return SendClientMessage(playerid, 0xFFFFFFFF, "PENGGUNAAN: /akick [playerid]");
+
+        new targetid = strval(tmp);
+        if(!IsPlayerConnected(targetid) || !IsLoggedIn[targetid]) return SendClientMessage(playerid, 0xFF0000FF, "Pemain tidak ditemukan atau belum login!");
+
+        SendClientMessage(targetid, 0xFF0000FF, "ADMIN: Anda telah di-kick dari server!");
+        Kick(targetid);
+        SendClientMessage(playerid, 0x00FF00FF, "ADMIN: Anda berhasil melakukan kick ke pemain.");
+        return 1;
+    }
+
     return 0;
+}
+
+// Fungsi strtok untuk memecah string (native tanpa sscanf plugin)
+strtok(const string[], &index)
+{
+    new length = strlen(string);
+    while ((index < length) && (string[index] <= ' '))
+    {
+        index++;
+    }
+
+    new offset = index;
+    new result[128];
+    while ((index < length) && (string[index] > ' ') && ((index - offset) < (sizeof(result) - 1)))
+    {
+        result[index - offset] = string[index];
+        index++;
+    }
+    result[index - offset] = EOS;
+    return result;
 }
 
 public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
@@ -115,11 +270,13 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         new file[128];
         GetAccountFile(playerid, file, sizeof(file));
 
+        format(PlayerInfo[playerid][pPassword], 129, "%s", inputtext);
+
         new File:handle = fopen(file, io_write);
         if (handle)
         {
             new writestr[256];
-            format(writestr, sizeof(writestr), "Password=%s\n", inputtext);
+            format(writestr, sizeof(writestr), "Password=%s\n", PlayerInfo[playerid][pPassword]);
             fwrite(handle, writestr);
 
             format(writestr, sizeof(writestr), "Money=500\n");
@@ -129,6 +286,21 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             fwrite(handle, writestr);
 
             format(writestr, sizeof(writestr), "BankMoney=0\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "Hunger=100\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "Thirst=100\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "Job=0\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "Admin=0\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "VehModel=0\n");
             fwrite(handle, writestr);
 
             fclose(handle);
@@ -189,6 +361,26 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
                     {
                         PlayerInfo[playerid][pBankMoney] = strval(val);
                     }
+                    else if (!strcmp(key, "Hunger", true))
+                    {
+                        PlayerInfo[playerid][pHunger] = strval(val);
+                    }
+                    else if (!strcmp(key, "Thirst", true))
+                    {
+                        PlayerInfo[playerid][pThirst] = strval(val);
+                    }
+                    else if (!strcmp(key, "Job", true))
+                    {
+                        PlayerInfo[playerid][pJob] = strval(val);
+                    }
+                    else if (!strcmp(key, "Admin", true))
+                    {
+                        PlayerInfo[playerid][pAdmin] = strval(val);
+                    }
+                    else if (!strcmp(key, "VehModel", true))
+                    {
+                        PlayerInfo[playerid][pVehModel] = strval(val);
+                    }
                 }
             }
             fclose(handle);
@@ -196,6 +388,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             if (passMatch)
             {
                 IsLoggedIn[playerid] = true;
+                format(PlayerInfo[playerid][pPassword], 129, "%s", inputtext);
                 GivePlayerMoney(playerid, PlayerInfo[playerid][pMoney]);
                 SetPlayerScore(playerid, PlayerInfo[playerid][pScore]);
                 SendClientMessage(playerid, 0x00FF00FF, "Login berhasil! Selamat bermain.");
@@ -221,18 +414,29 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         }
         else if (listitem == 1) // Pekerjaan
         {
-            SendClientMessage(playerid, 0xFFFF00FF, "Fitur Pekerjaan sedang dalam pengembangan.");
+            new str[256];
+            format(str, sizeof(str), "Pekerjaan Saat Ini: %s\nSupir Taksi\nKurir Paket\nResign (Keluar)", (PlayerInfo[playerid][pJob] == 0) ? "Pengangguran" : (PlayerInfo[playerid][pJob] == 1) ? "Supir Taksi" : "Kurir Paket");
+            ShowPlayerDialog(playerid, DIALOG_JOB_MENU, DIALOG_STYLE_LIST, "Lowongan Pekerjaan", str, "Pilih", "Kembali");
         }
         else if (listitem == 2) // Kendaraan
         {
-            SendClientMessage(playerid, 0xFFFF00FF, "Fitur Kendaraan sedang dalam pengembangan.");
+            new str[256];
+            if (PlayerInfo[playerid][pVehModel] == 0)
+            {
+                format(str, sizeof(str), "Beli Motor Faggio ($500)");
+            }
+            else
+            {
+                format(str, sizeof(str), "Panggil Kendaraan Anda");
+            }
+            ShowPlayerDialog(playerid, DIALOG_VEH_MENU, DIALOG_STYLE_LIST, "Kendaraan Pribadi", str, "Pilih", "Kembali");
         }
         return 1;
     }
 
     if (dialogid == DIALOG_BANK_MENU)
     {
-        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Pekerjaan (Segera)\n3. Kendaraan (Segera)", "Pilih", "Tutup");
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
 
         if (listitem == 0) // Info Saldo (tidak memicu dialog input, hanya kembali me-refresh)
         {
@@ -253,7 +457,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 
     if (dialogid == DIALOG_BANK_DEPOSIT)
     {
-        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Pekerjaan (Segera)\n3. Kendaraan (Segera)", "Pilih", "Tutup");
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
 
         new amount = strval(inputtext);
         if (amount <= 0) return ShowPlayerDialog(playerid, DIALOG_BANK_DEPOSIT, DIALOG_STYLE_INPUT, "Simpan Uang", "Jumlah tidak valid!\nBerapa jumlah uang tunai yang ingin disimpan?", "Simpan", "Batal");
@@ -272,7 +476,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 
     if (dialogid == DIALOG_BANK_WITHDRAW)
     {
-        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Pekerjaan (Segera)\n3. Kendaraan (Segera)", "Pilih", "Tutup");
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
 
         new amount = strval(inputtext);
         if (amount <= 0) return ShowPlayerDialog(playerid, DIALOG_BANK_WITHDRAW, DIALOG_STYLE_INPUT, "Tarik Uang", "Jumlah tidak valid!\nBerapa jumlah saldo bank yang ingin ditarik tunai?", "Tarik", "Batal");
@@ -286,6 +490,57 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         format(msg, sizeof(msg), "BANK: Anda telah menarik uang tunai sebesar $%d. Saldo Bank tersisa: $%d", amount, PlayerInfo[playerid][pBankMoney]);
         SendClientMessage(playerid, 0x00FF00FF, msg);
         SavePlayerData(playerid);
+        return 1;
+    }
+
+    if (dialogid == DIALOG_JOB_MENU)
+    {
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
+
+        if (listitem == 0) return 1; // Info pekerjaan, bukan tombol
+
+        if (listitem == 1) // Supir Taksi
+        {
+            PlayerInfo[playerid][pJob] = 1;
+            SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda kini bekerja sebagai Supir Taksi.");
+        }
+        else if (listitem == 2) // Kurir Paket
+        {
+            PlayerInfo[playerid][pJob] = 2;
+            SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda kini bekerja sebagai Kurir Paket.");
+        }
+        else if (listitem == 3) // Resign
+        {
+            PlayerInfo[playerid][pJob] = 0;
+            SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda telah mengundurkan diri dan kini menganggur.");
+        }
+        return 1;
+    }
+
+    if (dialogid == DIALOG_VEH_MENU)
+    {
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
+
+        if (listitem == 0)
+        {
+            if (PlayerInfo[playerid][pVehModel] == 0) // Jika belum punya kendaraan, beli faggio (model 462)
+            {
+                if (GetPlayerMoney(playerid) < 500) return SendClientMessage(playerid, 0xFF0000FF, "Uang tunai Anda tidak cukup untuk membeli motor ($500)!");
+                GivePlayerMoney(playerid, -500);
+                PlayerInfo[playerid][pVehModel] = 462;
+                SendClientMessage(playerid, 0x00FF00FF, "VEHICLE: Anda berhasil membeli motor Faggio. Gunakan menu HP untuk memanggilnya.");
+            }
+            else // Spawn kendaraan
+            {
+                new Float:x, Float:y, Float:z, Float:a;
+                GetPlayerPos(playerid, x, y, z);
+                GetPlayerFacingAngle(playerid, a);
+                // CreateVehicle(modelid, Float:x, Float:y, Float:z, Float:angle, color1, color2, respawn_delay, addsiren=0)
+                new veh = CreateVehicle(PlayerInfo[playerid][pVehModel], x + 2.0, y, z, a, -1, -1, 600);
+                PutPlayerInVehicle(playerid, veh, 0);
+                SendClientMessage(playerid, 0x00FF00FF, "VEHICLE: Kendaraan pribadi Anda telah dikirim.");
+            }
+        }
         return 1;
     }
 
@@ -304,37 +559,12 @@ stock SavePlayerData(playerid)
     PlayerInfo[playerid][pMoney] = GetPlayerMoney(playerid);
     PlayerInfo[playerid][pScore] = GetPlayerScore(playerid);
 
-    // Buka file awal untuk baca password (agar tidak kerest)
-    new File:handleRead = fopen(file, io_read);
-    new currentPass[129];
-    if (handleRead)
-    {
-        new readstr[256], key[64], val[129];
-        while (fread(handleRead, readstr))
-        {
-            for(new i=0; i<strlen(readstr); i++) {
-                if(readstr[i] == '\n' || readstr[i] == '\r') readstr[i] = '\0';
-            }
-            new splitPos = strfind(readstr, "=");
-            if (splitPos != -1)
-            {
-                strmid(key, readstr, 0, splitPos);
-                strmid(val, readstr, splitPos + 1, strlen(readstr));
-                if (!strcmp(key, "Password", true))
-                {
-                    format(currentPass, sizeof(currentPass), "%s", val);
-                }
-            }
-        }
-        fclose(handleRead);
-    }
-
     // Timpa ulang isi file
     new File:handleWrite = fopen(file, io_write);
     if (handleWrite)
     {
         new writestr[256];
-        format(writestr, sizeof(writestr), "Password=%s\n", currentPass);
+        format(writestr, sizeof(writestr), "Password=%s\n", PlayerInfo[playerid][pPassword]);
         fwrite(handleWrite, writestr);
 
         format(writestr, sizeof(writestr), "Money=%d\n", PlayerInfo[playerid][pMoney]);
@@ -344,6 +574,21 @@ stock SavePlayerData(playerid)
         fwrite(handleWrite, writestr);
 
         format(writestr, sizeof(writestr), "BankMoney=%d\n", PlayerInfo[playerid][pBankMoney]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "Hunger=%d\n", PlayerInfo[playerid][pHunger]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "Thirst=%d\n", PlayerInfo[playerid][pThirst]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "Job=%d\n", PlayerInfo[playerid][pJob]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "Admin=%d\n", PlayerInfo[playerid][pAdmin]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "VehModel=%d\n", PlayerInfo[playerid][pVehModel]);
         fwrite(handleWrite, writestr);
 
         fclose(handleWrite);
