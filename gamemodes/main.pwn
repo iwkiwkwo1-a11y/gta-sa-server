@@ -12,6 +12,9 @@
 #define DIALOG_INV_MENU 9
 #define DIALOG_MARKET_MENU 10
 #define DIALOG_MISSION_MENU 11
+#define DIALOG_BRANKAS_MENU 12
+#define DIALOG_BRANKAS_DEPOSIT 13
+#define DIALOG_BRANKAS_WITHDRAW 14
 
 // Data enum pemain
 enum pInfo
@@ -27,7 +30,8 @@ enum pInfo
     pVehModel,
     pFood,
     pDrink,
-    pPaydayTimer
+    pPaydayTimer,
+    pHouseID
 };
 new PlayerInfo[MAX_PLAYERS][pInfo];
 new bool:IsLoggedIn[MAX_PLAYERS];
@@ -38,6 +42,9 @@ new MissionType[MAX_PLAYERS]; // 1 = Ojol/Taksi, 2 = Kurir
 new MissionStep[MAX_PLAYERS]; // 1 = Jemput, 2 = Antar
 new MissionActor[MAX_PLAYERS]; // ID Actor pelanggan per player
 
+// Variabel Penyimpanan ID Kendaraan Spawanan
+new PlayerSpawnedVeh[MAX_PLAYERS] = {-1, ...};
+
 // Lokasi valid untuk misi (X, Y, Z, Angle)
 new Float:MissionPoints[][4] = {
     {1958.3783, 1343.1572, 15.3746, 269.1425}, // Contoh lokasi valid Las Venturas
@@ -46,6 +53,32 @@ new Float:MissionPoints[][4] = {
     {2022.6105, 1008.2045, 10.8203, 180.0},
     {1985.4523, 1021.0594, 9.9453, 90.0}
 };
+
+// Struktur Data Rumah
+enum hInfo
+{
+    Float:hExtX,
+    Float:hExtY,
+    Float:hExtZ,
+    Float:hIntX,
+    Float:hIntY,
+    Float:hIntZ,
+    hIntID,
+    hPrice,
+    hSafeMoney, // Saldo Brankas Uang
+    hOwner[MAX_PLAYER_NAME]
+};
+#define MAX_HOUSES 3
+new HouseInfo[MAX_HOUSES][hInfo] = {
+    // Luar X, Luar Y, Luar Z, Dalam X, Dalam Y, Dalam Z, Interior ID, Harga, Saldo Brankas, Owner (Default: "None")
+    {2496.0498, -1695.2388, 10.1484,  223.0439, 1289.2598, 1082.1999, 1, 5000, 0, "None"}, // Rumah 1 (Ganton)
+    {2488.6658, -1645.7197, 14.0703,  223.0439, 1289.2598, 1082.1999, 1, 7500, 0, "None"}, // Rumah 2 (Ganton)
+    {2444.6296, -1693.3618, 13.5186,  223.0439, 1289.2598, 1082.1999, 1, 6000, 0, "None"}  // Rumah 3 (Grove)
+};
+
+// Variabel untuk menyimpan ID Pickup dan 3DTextLabel
+new HousePickup[MAX_HOUSES];
+new Text3D:HouseLabel[MAX_HOUSES];
 
 // Helper: Format letak file akun berdasarkan nama
 stock GetAccountFile(playerid, filename[], len)
@@ -67,11 +100,83 @@ main()
 // Forward deklarasi timer
 forward GlobalTimer();
 
+// Forward deklarasi strtok agar kompilator tidak eror array size
+forward strtok(const string[], &index);
+
+stock LoadHouseData()
+{
+    new file[128], readstr[256], key[64], val[129];
+    for(new i = 0; i < MAX_HOUSES; i++)
+    {
+        format(file, sizeof(file), "Users/House_%d.ini", i);
+        if (fexist(file))
+        {
+            new File:handle = fopen(file, io_read);
+            if (handle)
+            {
+                while (fread(handle, readstr))
+                {
+                    for(new j=0; j<strlen(readstr); j++) {
+                        if(readstr[j] == '\n' || readstr[j] == '\r') readstr[j] = '\0';
+                    }
+                    new splitPos = strfind(readstr, "=");
+                    if (splitPos != -1)
+                    {
+                        strmid(key, readstr, 0, splitPos);
+                        strmid(val, readstr, splitPos + 1, strlen(readstr));
+                        if (!strcmp(key, "Owner", true)) format(HouseInfo[i][hOwner], MAX_PLAYER_NAME, "%s", val);
+                        else if (!strcmp(key, "SafeMoney", true)) HouseInfo[i][hSafeMoney] = strval(val);
+                    }
+                }
+                fclose(handle);
+            }
+        }
+    }
+}
+
+stock SaveHouseData(houseid)
+{
+    new file[128];
+    format(file, sizeof(file), "Users/House_%d.ini", houseid);
+    new File:handle = fopen(file, io_write);
+    if (handle)
+    {
+        new str[128];
+        format(str, sizeof(str), "Owner=%s\n", HouseInfo[houseid][hOwner]);
+        fwrite(handle, str);
+        format(str, sizeof(str), "SafeMoney=%d\n", HouseInfo[houseid][hSafeMoney]);
+        fwrite(handle, str);
+        fclose(handle);
+    }
+}
+
 public OnGameModeInit()
 {
     // Konfigurasi dasar saat server menyala
     SetGameModeText("RP Mode v1.0");
     AddPlayerClass(0, 1958.3783, 1343.1572, 15.3746, 269.1425, 0, 0, 0, 0, 0, 0);
+
+    // Load Data Pemilik Rumah
+    LoadHouseData();
+
+    // Inisialisasi Sistem Rumah (Membuat Pickup dan Label)
+    for(new i = 0; i < MAX_HOUSES; i++)
+    {
+        new str[128];
+        if (strcmp(HouseInfo[i][hOwner], "None", true) == 0)
+        {
+            // Rumah belum terjual (Pickup Hijau 1273)
+            HousePickup[i] = CreatePickup(1273, 1, HouseInfo[i][hExtX], HouseInfo[i][hExtY], HouseInfo[i][hExtZ], -1);
+            format(str, sizeof(str), "[Rumah Dijual]\nHarga: $%d\nTekan ENTER untuk membeli", HouseInfo[i][hPrice]);
+        }
+        else
+        {
+            // Rumah sudah terjual (Pickup Merah 1272)
+            HousePickup[i] = CreatePickup(1272, 1, HouseInfo[i][hExtX], HouseInfo[i][hExtY], HouseInfo[i][hExtZ], -1);
+            format(str, sizeof(str), "[Rumah Pribadi]\nPemilik: %s\nTekan ENTER untuk masuk", HouseInfo[i][hOwner]);
+        }
+        HouseLabel[i] = Create3DTextLabel(str, 0x00FF00FF, HouseInfo[i][hExtX], HouseInfo[i][hExtY], HouseInfo[i][hExtZ] + 0.5, 20.0, 0, 0);
+    }
 
     // Timer berjalan setiap 60 detik (60000 ms)
     SetTimer("GlobalTimer", 60000, true);
@@ -147,6 +252,7 @@ public OnPlayerConnect(playerid)
     PlayerInfo[playerid][pFood] = 0;
     PlayerInfo[playerid][pDrink] = 0;
     PlayerInfo[playerid][pPaydayTimer] = 0;
+    PlayerInfo[playerid][pHouseID] = 0;
     format(PlayerInfo[playerid][pPassword], 129, "");
 
     OnMission[playerid] = false;
@@ -184,6 +290,13 @@ public OnPlayerDisconnect(playerid, reason)
         MissionActor[playerid] = -1;
     }
 
+    // Pembersihan kendaraan yang dispawn pemain
+    if (PlayerSpawnedVeh[playerid] != -1)
+    {
+        DestroyVehicle(PlayerSpawnedVeh[playerid]);
+        PlayerSpawnedVeh[playerid] = -1;
+    }
+
     return 1;
 }
 
@@ -195,11 +308,63 @@ public OnPlayerSpawn(playerid)
         Kick(playerid);
         return 1;
     }
+
+    // Spawn di rumah jika punya
+    if (PlayerInfo[playerid][pHouseID] > 0)
+    {
+        new houseIdx = PlayerInfo[playerid][pHouseID] - 1;
+        if (houseIdx >= 0 && houseIdx < MAX_HOUSES)
+        {
+            SetPlayerPos(playerid, HouseInfo[houseIdx][hExtX], HouseInfo[houseIdx][hExtY], HouseInfo[houseIdx][hExtZ]);
+            SetPlayerInterior(playerid, 0); // Di luar rumah
+            SendClientMessage(playerid, 0x00FF00FF, "HOUSE: Anda spawn di depan rumah Anda.");
+        }
+    }
+
     return 1;
 }
 
 public OnPlayerCommandText(playerid, cmdtext[])
 {
+    if (strcmp(cmdtext, "/tidur", true) == 0)
+    {
+        if (!IsLoggedIn[playerid]) return 1;
+
+        // Cek apakah pemain berada di dalam rumah miliknya
+        new hid = PlayerInfo[playerid][pHouseID] - 1;
+        if (hid >= 0 && hid < MAX_HOUSES)
+        {
+            if (IsPlayerInRangeOfPoint(playerid, 10.0, HouseInfo[hid][hIntX], HouseInfo[hid][hIntY], HouseInfo[hid][hIntZ]) && GetPlayerInterior(playerid) == HouseInfo[hid][hIntID] && GetPlayerVirtualWorld(playerid) == (hid + 1))
+            {
+                SetPlayerHealth(playerid, 100.0);
+                PlayerInfo[playerid][pHunger] = 100;
+                PlayerInfo[playerid][pThirst] = 100;
+                SendClientMessage(playerid, 0x00FF00FF, "HOUSE: Anda beristirahat di kasur. Darah, Lapar, dan Haus Anda terisi penuh.");
+                return 1;
+            }
+        }
+        SendClientMessage(playerid, 0xFF0000FF, "HOUSE: Anda harus berada di dalam rumah milik Anda untuk tidur!");
+        return 1;
+    }
+
+    if (strcmp(cmdtext, "/brankas", true) == 0)
+    {
+        if (!IsLoggedIn[playerid]) return 1;
+
+        new hid = PlayerInfo[playerid][pHouseID] - 1;
+        if (hid >= 0 && hid < MAX_HOUSES)
+        {
+            if (IsPlayerInRangeOfPoint(playerid, 10.0, HouseInfo[hid][hIntX], HouseInfo[hid][hIntY], HouseInfo[hid][hIntZ]) && GetPlayerInterior(playerid) == HouseInfo[hid][hIntID] && GetPlayerVirtualWorld(playerid) == (hid + 1))
+            {
+                new str[256];
+                format(str, sizeof(str), "Brankas Rumah\nSaldo: $%d\n\n1. Simpan Uang\n2. Tarik Uang", HouseInfo[hid][hSafeMoney]);
+                ShowPlayerDialog(playerid, DIALOG_BRANKAS_MENU, DIALOG_STYLE_LIST, "Brankas", str, "Pilih", "Tutup");
+                return 1;
+            }
+        }
+        SendClientMessage(playerid, 0xFF0000FF, "HOUSE: Anda harus berada di dalam rumah milik Anda untuk membuka brankas!");
+        return 1;
+    }
 
     // ======== SISTEM ADMIN ========
     new cmd[128], idx;
@@ -290,6 +455,78 @@ public OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
             ShowPlayerDialog(playerid, DIALOG_INV_MENU, DIALOG_STYLE_LIST, "Isi Tas (Inventory)", str, "Gunakan", "Tutup");
         }
     }
+
+    // Cek Tombol ENTER (KEY_SECONDARY_ATTACK) untuk Interaksi Rumah
+    if (newkeys & KEY_SECONDARY_ATTACK)
+    {
+        if (IsLoggedIn[playerid])
+        {
+            new Float:px, Float:py, Float:pz;
+            GetPlayerPos(playerid, px, py, pz);
+
+            for(new i = 0; i < MAX_HOUSES; i++)
+            {
+                // Jarak dengan Eksterior (Luar Rumah)
+                if (IsPlayerInRangeOfPoint(playerid, 3.0, HouseInfo[i][hExtX], HouseInfo[i][hExtY], HouseInfo[i][hExtZ]))
+                {
+                    if (strcmp(HouseInfo[i][hOwner], "None", true) == 0) // Jika belum ada yang punya
+                    {
+                        if (PlayerInfo[playerid][pHouseID] != 0) return SendClientMessage(playerid, 0xFF0000FF, "Anda sudah memiliki rumah!");
+                        if (GetPlayerMoney(playerid) < HouseInfo[i][hPrice]) return SendClientMessage(playerid, 0xFF0000FF, "Uang tunai Anda tidak cukup untuk membeli rumah ini!");
+
+                        // Proses Beli
+                        GivePlayerMoney(playerid, -HouseInfo[i][hPrice]);
+                        PlayerInfo[playerid][pHouseID] = i + 1; // Simpan ID (index + 1)
+
+                        new name[MAX_PLAYER_NAME];
+                        GetPlayerName(playerid, name, sizeof(name));
+                        format(HouseInfo[i][hOwner], MAX_PLAYER_NAME, "%s", name);
+
+                        // Update Pickup & Label
+                        DestroyPickup(HousePickup[i]);
+                        HousePickup[i] = CreatePickup(1272, 1, HouseInfo[i][hExtX], HouseInfo[i][hExtY], HouseInfo[i][hExtZ], -1);
+
+                        new str[128];
+                        format(str, sizeof(str), "[Rumah Pribadi]\nPemilik: %s\nTekan ENTER untuk masuk", HouseInfo[i][hOwner]);
+                        Update3DTextLabelText(HouseLabel[i], 0x00FF00FF, str);
+
+                        SendClientMessage(playerid, 0x00FF00FF, "HOUSE: Selamat! Anda telah membeli rumah ini.");
+                        SaveHouseData(i);
+                        SavePlayerData(playerid);
+                    }
+                    else // Jika sudah ada yang punya
+                    {
+                        new name[MAX_PLAYER_NAME];
+                        GetPlayerName(playerid, name, sizeof(name));
+
+                        if (strcmp(HouseInfo[i][hOwner], name, true) == 0) // Milik sendiri
+                        {
+                            SetPlayerPos(playerid, HouseInfo[i][hIntX], HouseInfo[i][hIntY], HouseInfo[i][hIntZ]);
+                            SetPlayerInterior(playerid, HouseInfo[i][hIntID]);
+                            SetPlayerVirtualWorld(playerid, i + 1); // Agar tidak bertabrakan interior dengan pemain lain
+                            SendClientMessage(playerid, 0x00FF00FF, "HOUSE: Anda masuk ke dalam rumah Anda. (Tekan ENTER untuk keluar)");
+                            SendClientMessage(playerid, 0x00FF00FF, "Ketik /tidur untuk istirahat, atau /brankas untuk menyimpan/mengambil uang.");
+                        }
+                        else
+                        {
+                            SendClientMessage(playerid, 0xFF0000FF, "Rumah ini terkunci milik orang lain!");
+                        }
+                    }
+                    return 1;
+                }
+
+                // Jarak dengan Interior (Dalam Rumah, mau keluar)
+                if (IsPlayerInRangeOfPoint(playerid, 3.0, HouseInfo[i][hIntX], HouseInfo[i][hIntY], HouseInfo[i][hIntZ]) && GetPlayerInterior(playerid) == HouseInfo[i][hIntID] && GetPlayerVirtualWorld(playerid) == (i + 1))
+                {
+                    SetPlayerPos(playerid, HouseInfo[i][hExtX], HouseInfo[i][hExtY], HouseInfo[i][hExtZ]);
+                    SetPlayerInterior(playerid, 0); // Kembali ke dunia luar
+                    SetPlayerVirtualWorld(playerid, 0);
+                    return 1;
+                }
+            }
+        }
+    }
+
     return 1;
 }
 
@@ -369,6 +606,9 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             fwrite(handle, writestr);
 
             format(writestr, sizeof(writestr), "PaydayTimer=0\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "HouseID=0\n");
             fwrite(handle, writestr);
 
             fclose(handle);
@@ -460,6 +700,10 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
                     else if (!strcmp(key, "PaydayTimer", true))
                     {
                         PlayerInfo[playerid][pPaydayTimer] = strval(val);
+                    }
+                    else if (!strcmp(key, "HouseID", true))
+                    {
+                        PlayerInfo[playerid][pHouseID] = strval(val);
                     }
                 }
             }
@@ -623,10 +867,18 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             }
             else // Spawn kendaraan
             {
+                // Hapus kendaraan lama jika ada untuk mencegah memory leak
+                if (PlayerSpawnedVeh[playerid] != -1)
+                {
+                    DestroyVehicle(PlayerSpawnedVeh[playerid]);
+                }
+
                 new Float:x, Float:y, Float:z, Float:a;
                 GetPlayerPos(playerid, x, y, z);
                 GetPlayerFacingAngle(playerid, a);
                 new veh = CreateVehicle(PlayerInfo[playerid][pVehModel], x + 2.0, y, z, a, -1, -1, 600);
+                PlayerSpawnedVeh[playerid] = veh; // Simpan ID
+
                 PutPlayerInVehicle(playerid, veh, 0);
                 SendClientMessage(playerid, 0x00FF00FF, "VEHICLE: Kendaraan pribadi Anda telah dikirim.");
             }
@@ -675,6 +927,69 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             if (PlayerInfo[playerid][pThirst] > 100) PlayerInfo[playerid][pThirst] = 100;
             SendClientMessage(playerid, 0x00FF00FF, "INVENTORY: Anda meminum sebotol air. Rasa haus berkurang.");
         }
+        return 1;
+    }
+
+    if (dialogid == DIALOG_BRANKAS_MENU) // Brankas Menu
+    {
+        if (!response) return 1;
+        new hid = PlayerInfo[playerid][pHouseID] - 1;
+        if (hid < 0 || hid >= MAX_HOUSES) return 1;
+
+        if (listitem == 0) // Info Saldo (Kembali ke dialog)
+        {
+            new str[256];
+            format(str, sizeof(str), "Brankas Rumah\nSaldo: $%d\n\n1. Simpan Uang\n2. Tarik Uang", HouseInfo[hid][hSafeMoney]);
+            ShowPlayerDialog(playerid, DIALOG_BRANKAS_MENU, DIALOG_STYLE_LIST, "Brankas", str, "Pilih", "Tutup");
+        }
+        else if (listitem == 1) // Deposit
+        {
+            ShowPlayerDialog(playerid, DIALOG_BRANKAS_DEPOSIT, DIALOG_STYLE_INPUT, "Simpan Uang ke Brankas", "Masukkan jumlah uang yang ingin disimpan:", "Simpan", "Batal");
+        }
+        else if (listitem == 2) // Withdraw
+        {
+            ShowPlayerDialog(playerid, DIALOG_BRANKAS_WITHDRAW, DIALOG_STYLE_INPUT, "Tarik Uang dari Brankas", "Masukkan jumlah uang yang ingin ditarik:", "Tarik", "Batal");
+        }
+        return 1;
+    }
+
+    if (dialogid == DIALOG_BRANKAS_DEPOSIT) // Brankas Deposit
+    {
+        if (!response) return 1;
+        new amount = strval(inputtext);
+        if (amount <= 0) return SendClientMessage(playerid, 0xFF0000FF, "Jumlah tidak valid!");
+        if (GetPlayerMoney(playerid) < amount) return SendClientMessage(playerid, 0xFF0000FF, "Uang tunai Anda tidak cukup!");
+
+        new hid = PlayerInfo[playerid][pHouseID] - 1;
+        if (hid < 0 || hid >= MAX_HOUSES) return 1;
+
+        GivePlayerMoney(playerid, -amount);
+        HouseInfo[hid][hSafeMoney] += amount;
+        SaveHouseData(hid);
+
+        new msg[128];
+        format(msg, sizeof(msg), "HOUSE: Anda menyimpan $%d ke dalam brankas. Saldo saat ini: $%d", amount, HouseInfo[hid][hSafeMoney]);
+        SendClientMessage(playerid, 0x00FF00FF, msg);
+        return 1;
+    }
+
+    if (dialogid == DIALOG_BRANKAS_WITHDRAW) // Brankas Withdraw
+    {
+        if (!response) return 1;
+        new amount = strval(inputtext);
+        if (amount <= 0) return SendClientMessage(playerid, 0xFF0000FF, "Jumlah tidak valid!");
+
+        new hid = PlayerInfo[playerid][pHouseID] - 1;
+        if (hid < 0 || hid >= MAX_HOUSES) return 1;
+        if (HouseInfo[hid][hSafeMoney] < amount) return SendClientMessage(playerid, 0xFF0000FF, "Saldo brankas Anda tidak cukup!");
+
+        HouseInfo[hid][hSafeMoney] -= amount;
+        GivePlayerMoney(playerid, amount);
+        SaveHouseData(hid);
+
+        new msg[128];
+        format(msg, sizeof(msg), "HOUSE: Anda menarik $%d dari brankas. Saldo tersisa: $%d", amount, HouseInfo[hid][hSafeMoney]);
+        SendClientMessage(playerid, 0x00FF00FF, msg);
         return 1;
     }
 
@@ -844,6 +1159,9 @@ stock SavePlayerData(playerid)
         fwrite(handleWrite, writestr);
 
         format(writestr, sizeof(writestr), "PaydayTimer=%d\n", PlayerInfo[playerid][pPaydayTimer]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "HouseID=%d\n", PlayerInfo[playerid][pHouseID]);
         fwrite(handleWrite, writestr);
 
         fclose(handleWrite);
