@@ -9,6 +9,9 @@
 #define DIALOG_BANK_WITHDRAW 6
 #define DIALOG_JOB_MENU 7
 #define DIALOG_VEH_MENU 8
+#define DIALOG_INV_MENU 9
+#define DIALOG_MARKET_MENU 10
+#define DIALOG_MISSION_MENU 11
 
 // Data enum pemain
 enum pInfo
@@ -21,10 +24,17 @@ enum pInfo
     pThirst,
     pJob,
     pAdmin,
-    pVehModel
+    pVehModel,
+    pFood,
+    pDrink,
+    pPaydayTimer
 };
 new PlayerInfo[MAX_PLAYERS][pInfo];
 new bool:IsLoggedIn[MAX_PLAYERS];
+
+// Variabel Misi Sesi (Tidak di-save)
+new bool:OnMission[MAX_PLAYERS];
+new MissionType[MAX_PLAYERS]; // 1 = Ojol/Taksi, 2 = Kurir
 
 // Helper: Format letak file akun berdasarkan nama
 stock GetAccountFile(playerid, filename[], len)
@@ -79,6 +89,33 @@ public GlobalTimer()
                 SetPlayerHealth(i, hp - 5.0);
                 SendClientMessage(i, 0xFF0000FF, "Anda merasa sangat lapar/haus! Darah Anda berkurang.");
             }
+
+            // Paycheck System (Timer bertambah 1 setiap menit)
+            PlayerInfo[i][pPaydayTimer]++;
+            if(PlayerInfo[i][pPaydayTimer] >= 60)
+            {
+                PlayerInfo[i][pPaydayTimer] = 0; // Reset waktu
+
+                new salary = 100; // Gaji dasar pengangguran
+                if(PlayerInfo[i][pJob] == 1) salary = 350; // Supir Taksi
+                else if(PlayerInfo[i][pJob] == 2) salary = 300; // Kurir Paket
+
+                // Tambahkan gaji ke Bank
+                PlayerInfo[i][pBankMoney] += salary;
+
+                SendClientMessage(i, 0x00FF00FF, "================= PAYCHECK =================");
+                SendClientMessage(i, 0xFFFFFFFF, "Anda telah bermain selama 1 Jam.");
+
+                new str[128];
+                format(str, sizeof(str), "Gaji Pekerjaan: $%d (Telah ditransfer ke Saldo Bank Anda)", salary);
+                SendClientMessage(i, 0xFFFFFFFF, str);
+
+                format(str, sizeof(str), "Saldo Bank Saat Ini: $%d", PlayerInfo[i][pBankMoney]);
+                SendClientMessage(i, 0xFFFFFFFF, str);
+                SendClientMessage(i, 0x00FF00FF, "============================================");
+
+                SavePlayerData(i); // Simpan otomatis setiap payday
+            }
         }
     }
     return 1;
@@ -96,7 +133,14 @@ public OnPlayerConnect(playerid)
     PlayerInfo[playerid][pJob] = 0;
     PlayerInfo[playerid][pAdmin] = 0;
     PlayerInfo[playerid][pVehModel] = 0;
+    PlayerInfo[playerid][pFood] = 0;
+    PlayerInfo[playerid][pDrink] = 0;
+    PlayerInfo[playerid][pPaydayTimer] = 0;
     format(PlayerInfo[playerid][pPassword], 129, "");
+
+    OnMission[playerid] = false;
+    MissionType[playerid] = 0;
+    DisablePlayerCheckpoint(playerid);
 
     new file[128];
     GetAccountFile(playerid, file, sizeof(file));
@@ -135,36 +179,6 @@ public OnPlayerSpawn(playerid)
 
 public OnPlayerCommandText(playerid, cmdtext[])
 {
-    if (strcmp(cmdtext, "/hp", true) == 0)
-    {
-        if (!IsLoggedIn[playerid]) return SendClientMessage(playerid, 0xFF0000FF, "Anda harus login terlebih dahulu!");
-        ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
-        return 1;
-    }
-
-    if (strcmp(cmdtext, "/makan", true) == 0)
-    {
-        if (!IsLoggedIn[playerid]) return 1;
-        if (GetPlayerMoney(playerid) < 10) return SendClientMessage(playerid, 0xFF0000FF, "Anda butuh $10 untuk makan!");
-
-        GivePlayerMoney(playerid, -10);
-        PlayerInfo[playerid][pHunger] += 50;
-        if (PlayerInfo[playerid][pHunger] > 100) PlayerInfo[playerid][pHunger] = 100;
-        SendClientMessage(playerid, 0x00FF00FF, "Anda memakan sebuah burger. Rasa lapar berkurang.");
-        return 1;
-    }
-
-    if (strcmp(cmdtext, "/minum", true) == 0)
-    {
-        if (!IsLoggedIn[playerid]) return 1;
-        if (GetPlayerMoney(playerid) < 5) return SendClientMessage(playerid, 0xFF0000FF, "Anda butuh $5 untuk minum!");
-
-        GivePlayerMoney(playerid, -5);
-        PlayerInfo[playerid][pThirst] += 50;
-        if (PlayerInfo[playerid][pThirst] > 100) PlayerInfo[playerid][pThirst] = 100;
-        SendClientMessage(playerid, 0x00FF00FF, "Anda meminum sebotol air. Rasa haus berkurang.");
-        return 1;
-    }
 
     // ======== SISTEM ADMIN ========
     new cmd[128], idx;
@@ -234,6 +248,30 @@ public OnPlayerCommandText(playerid, cmdtext[])
     return 0;
 }
 
+public OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
+{
+    // Cek Tombol Y (KEY_YES) untuk HP
+    if (newkeys & KEY_YES)
+    {
+        if (IsLoggedIn[playerid])
+        {
+            ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi\n4. E-Commerce Market\n5. Aplikasi Misi Pekerja", "Pilih", "Tutup");
+        }
+    }
+
+    // Cek Tombol N (KEY_NO) untuk Inventory Tas
+    if (newkeys & KEY_NO)
+    {
+        if (IsLoggedIn[playerid])
+        {
+            new str[256];
+            format(str, sizeof(str), "Makan (Miliki: %d)\nMinum (Miliki: %d)", PlayerInfo[playerid][pFood], PlayerInfo[playerid][pDrink]);
+            ShowPlayerDialog(playerid, DIALOG_INV_MENU, DIALOG_STYLE_LIST, "Isi Tas (Inventory)", str, "Gunakan", "Tutup");
+        }
+    }
+    return 1;
+}
+
 // Fungsi strtok untuk memecah string (native tanpa sscanf plugin)
 strtok(const string[], &index)
 {
@@ -301,6 +339,15 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             fwrite(handle, writestr);
 
             format(writestr, sizeof(writestr), "VehModel=0\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "Food=0\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "Drink=0\n");
+            fwrite(handle, writestr);
+
+            format(writestr, sizeof(writestr), "PaydayTimer=0\n");
             fwrite(handle, writestr);
 
             fclose(handle);
@@ -381,6 +428,18 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
                     {
                         PlayerInfo[playerid][pVehModel] = strval(val);
                     }
+                    else if (!strcmp(key, "Food", true))
+                    {
+                        PlayerInfo[playerid][pFood] = strval(val);
+                    }
+                    else if (!strcmp(key, "Drink", true))
+                    {
+                        PlayerInfo[playerid][pDrink] = strval(val);
+                    }
+                    else if (!strcmp(key, "PaydayTimer", true))
+                    {
+                        PlayerInfo[playerid][pPaydayTimer] = strval(val);
+                    }
                 }
             }
             fclose(handle);
@@ -430,6 +489,17 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
                 format(str, sizeof(str), "Panggil Kendaraan Anda");
             }
             ShowPlayerDialog(playerid, DIALOG_VEH_MENU, DIALOG_STYLE_LIST, "Kendaraan Pribadi", str, "Pilih", "Kembali");
+        }
+        else if (listitem == 3) // E-Commerce Market
+        {
+            ShowPlayerDialog(playerid, DIALOG_MARKET_MENU, DIALOG_STYLE_LIST, "E-Commerce Market", "1x Makanan ($15)\n1x Minuman ($10)", "Beli", "Kembali");
+        }
+        else if (listitem == 4) // Misi Pekerja
+        {
+            if (PlayerInfo[playerid][pJob] == 0) return SendClientMessage(playerid, 0xFF0000FF, "Anda sedang tidak memiliki pekerjaan!");
+            if (OnMission[playerid]) return SendClientMessage(playerid, 0xFF0000FF, "Anda sedang menjalankan misi!");
+
+            ShowPlayerDialog(playerid, DIALOG_MISSION_MENU, DIALOG_STYLE_LIST, "Aplikasi Misi Pekerja", "Mulai Cari Orderan/Misi", "Mulai", "Batal");
         }
         return 1;
     }
@@ -519,7 +589,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 
     if (dialogid == DIALOG_VEH_MENU)
     {
-        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi", "Pilih", "Tutup");
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi\n4. E-Commerce Market\n5. Aplikasi Misi Pekerja", "Pilih", "Tutup");
 
         if (listitem == 0)
         {
@@ -535,7 +605,6 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
                 new Float:x, Float:y, Float:z, Float:a;
                 GetPlayerPos(playerid, x, y, z);
                 GetPlayerFacingAngle(playerid, a);
-                // CreateVehicle(modelid, Float:x, Float:y, Float:z, Float:angle, color1, color2, respawn_delay, addsiren=0)
                 new veh = CreateVehicle(PlayerInfo[playerid][pVehModel], x + 2.0, y, z, a, -1, -1, 600);
                 PutPlayerInVehicle(playerid, veh, 0);
                 SendClientMessage(playerid, 0x00FF00FF, "VEHICLE: Kendaraan pribadi Anda telah dikirim.");
@@ -544,7 +613,107 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         return 1;
     }
 
+    if (dialogid == DIALOG_MARKET_MENU)
+    {
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi\n4. E-Commerce Market\n5. Aplikasi Misi Pekerja", "Pilih", "Tutup");
+
+        if (listitem == 0) // Beli Makanan
+        {
+            if (GetPlayerMoney(playerid) < 15) return SendClientMessage(playerid, 0xFF0000FF, "Anda butuh $15 untuk membeli Makanan!");
+            GivePlayerMoney(playerid, -15);
+            PlayerInfo[playerid][pFood]++;
+            SendClientMessage(playerid, 0x00FF00FF, "MARKET: Berhasil membeli Makanan, masuk ke dalam tas.");
+        }
+        else if (listitem == 1) // Beli Minuman
+        {
+            if (GetPlayerMoney(playerid) < 10) return SendClientMessage(playerid, 0xFF0000FF, "Anda butuh $10 untuk membeli Minuman!");
+            GivePlayerMoney(playerid, -10);
+            PlayerInfo[playerid][pDrink]++;
+            SendClientMessage(playerid, 0x00FF00FF, "MARKET: Berhasil membeli Minuman, masuk ke dalam tas.");
+        }
+        return 1;
+    }
+
+    if (dialogid == DIALOG_INV_MENU)
+    {
+        if (!response) return 1;
+
+        if (listitem == 0) // Konsumsi Makanan
+        {
+            if (PlayerInfo[playerid][pFood] < 1) return SendClientMessage(playerid, 0xFF0000FF, "Anda tidak memiliki makanan di tas!");
+            PlayerInfo[playerid][pFood]--;
+            PlayerInfo[playerid][pHunger] += 50;
+            if (PlayerInfo[playerid][pHunger] > 100) PlayerInfo[playerid][pHunger] = 100;
+            SendClientMessage(playerid, 0x00FF00FF, "INVENTORY: Anda memakan sebungkus makanan. Rasa lapar berkurang.");
+        }
+        else if (listitem == 1) // Konsumsi Minuman
+        {
+            if (PlayerInfo[playerid][pDrink] < 1) return SendClientMessage(playerid, 0xFF0000FF, "Anda tidak memiliki minuman di tas!");
+            PlayerInfo[playerid][pDrink]--;
+            PlayerInfo[playerid][pThirst] += 50;
+            if (PlayerInfo[playerid][pThirst] > 100) PlayerInfo[playerid][pThirst] = 100;
+            SendClientMessage(playerid, 0x00FF00FF, "INVENTORY: Anda meminum sebotol air. Rasa haus berkurang.");
+        }
+        return 1;
+    }
+
+    if (dialogid == DIALOG_MISSION_MENU)
+    {
+        if (!response) return ShowPlayerDialog(playerid, DIALOG_HP_MENU, DIALOG_STYLE_LIST, "Aplikasi Handphone", "1. Bank Mobile\n2. Lowongan Pekerjaan\n3. Kendaraan Pribadi\n4. E-Commerce Market\n5. Aplikasi Misi Pekerja", "Pilih", "Tutup");
+
+        if (listitem == 0) // Mulai Misi
+        {
+            OnMission[playerid] = true;
+            MissionType[playerid] = PlayerInfo[playerid][pJob]; // 1 = Taksi, 2 = Kurir
+
+            // Random lokasi (dummy lokasi)
+            new Float:rx = 2000.0 + random(200);
+            new Float:ry = 1500.0 + random(200);
+            new Float:rz = 15.0;
+
+            SetPlayerCheckpoint(playerid, rx, ry, rz, 3.0);
+
+            if (MissionType[playerid] == 1)
+            {
+                SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda mendapat orderan penumpang! Jemput penumpang di lokasi merah (Minimap).");
+            }
+            else if (MissionType[playerid] == 2)
+            {
+                SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda mendapat orderan paket! Antar paket ke lokasi merah (Minimap).");
+            }
+        }
+        return 1;
+    }
+
     return 0;
+}
+
+public OnPlayerEnterCheckpoint(playerid)
+{
+    if (OnMission[playerid])
+    {
+        DisablePlayerCheckpoint(playerid);
+        OnMission[playerid] = false;
+
+        new reward = 50 + random(50); // Gaji misi random $50 - $100
+        GivePlayerMoney(playerid, reward);
+
+        if (MissionType[playerid] == 1)
+        {
+            SendClientMessage(playerid, 0x00FF00FF, "JOB: Penumpang telah sampai. Anda menerima pembayaran tunai!");
+        }
+        else if (MissionType[playerid] == 2)
+        {
+            SendClientMessage(playerid, 0x00FF00FF, "JOB: Paket berhasil diantar. Anda menerima pembayaran tunai!");
+        }
+
+        new str[128];
+        format(str, sizeof(str), "Uang Diterima: $%d", reward);
+        SendClientMessage(playerid, 0xFFFF00FF, str);
+
+        MissionType[playerid] = 0;
+    }
+    return 1;
 }
 
 // Fungsi bantu menyimpan data (bisa dipanggil saat disconnect)
@@ -589,6 +758,15 @@ stock SavePlayerData(playerid)
         fwrite(handleWrite, writestr);
 
         format(writestr, sizeof(writestr), "VehModel=%d\n", PlayerInfo[playerid][pVehModel]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "Food=%d\n", PlayerInfo[playerid][pFood]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "Drink=%d\n", PlayerInfo[playerid][pDrink]);
+        fwrite(handleWrite, writestr);
+
+        format(writestr, sizeof(writestr), "PaydayTimer=%d\n", PlayerInfo[playerid][pPaydayTimer]);
         fwrite(handleWrite, writestr);
 
         fclose(handleWrite);
