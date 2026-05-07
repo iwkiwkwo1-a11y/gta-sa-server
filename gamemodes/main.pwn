@@ -35,6 +35,17 @@ new bool:IsLoggedIn[MAX_PLAYERS];
 // Variabel Misi Sesi (Tidak di-save)
 new bool:OnMission[MAX_PLAYERS];
 new MissionType[MAX_PLAYERS]; // 1 = Ojol/Taksi, 2 = Kurir
+new MissionStep[MAX_PLAYERS]; // 1 = Jemput, 2 = Antar
+new MissionActor[MAX_PLAYERS]; // ID Actor pelanggan per player
+
+// Lokasi valid untuk misi (X, Y, Z, Angle)
+new Float:MissionPoints[][4] = {
+    {1958.3783, 1343.1572, 15.3746, 269.1425}, // Contoh lokasi valid Las Venturas
+    {1945.1633, 1338.4893, 10.3664, 0.0},
+    {2036.0,    1344.0,    10.6719, 90.0},
+    {2022.6105, 1008.2045, 10.8203, 180.0},
+    {1985.4523, 1021.0594, 9.9453, 90.0}
+};
 
 // Helper: Format letak file akun berdasarkan nama
 stock GetAccountFile(playerid, filename[], len)
@@ -140,6 +151,8 @@ public OnPlayerConnect(playerid)
 
     OnMission[playerid] = false;
     MissionType[playerid] = 0;
+    MissionStep[playerid] = 0;
+    MissionActor[playerid] = -1;
     DisablePlayerCheckpoint(playerid);
 
     new file[128];
@@ -163,6 +176,14 @@ public OnPlayerDisconnect(playerid, reason)
     {
         SavePlayerData(playerid);
     }
+
+    // Pembersihan Actor jika pemain keluar saat misi
+    if (OnMission[playerid] && MissionActor[playerid] != -1)
+    {
+        DestroyActor(MissionActor[playerid]);
+        MissionActor[playerid] = -1;
+    }
+
     return 1;
 }
 
@@ -663,23 +684,35 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 
         if (listitem == 0) // Mulai Misi
         {
+            if (PlayerInfo[playerid][pJob] == 1 && !IsPlayerInAnyVehicle(playerid))
+            {
+                return SendClientMessage(playerid, 0xFF0000FF, "JOB: Anda harus berada di dalam kendaraan (Taksi/Ojol) untuk mencari penumpang!");
+            }
+
             OnMission[playerid] = true;
             MissionType[playerid] = PlayerInfo[playerid][pJob]; // 1 = Taksi, 2 = Kurir
+            MissionStep[playerid] = 1; // Mulai dari fase 1 (Jemput Pelanggan / Antar Paket ke Pelanggan)
 
-            // Random lokasi (dummy lokasi)
-            new Float:rx = 2000.0 + random(200);
-            new Float:ry = 1500.0 + random(200);
-            new Float:rz = 15.0;
+            // Pilih lokasi random dari MissionPoints
+            new rand = random(sizeof(MissionPoints));
+            new Float:rx = MissionPoints[rand][0];
+            new Float:ry = MissionPoints[rand][1];
+            new Float:rz = MissionPoints[rand][2];
+            new Float:ra = MissionPoints[rand][3];
 
-            SetPlayerCheckpoint(playerid, rx, ry, rz, 3.0);
+            SetPlayerCheckpoint(playerid, rx, ry, rz, 4.0);
+
+            // Spawn NPC/Actor di lokasi
+            new skin = 10 + random(50); // Skin NPC Acak
+            MissionActor[playerid] = CreateActor(skin, rx, ry, rz, ra);
 
             if (MissionType[playerid] == 1)
             {
-                SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda mendapat orderan penumpang! Jemput penumpang di lokasi merah (Minimap).");
+                SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda mendapat orderan penumpang! Jemput penumpang NPC di lokasi merah (Minimap).");
             }
             else if (MissionType[playerid] == 2)
             {
-                SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda mendapat orderan paket! Antar paket ke lokasi merah (Minimap).");
+                SendClientMessage(playerid, 0x00FF00FF, "JOB: Anda mendapat orderan pengiriman paket! Antar paket ke NPC pelanggan di lokasi merah.");
             }
         }
         return 1;
@@ -692,26 +725,70 @@ public OnPlayerEnterCheckpoint(playerid)
 {
     if (OnMission[playerid])
     {
-        DisablePlayerCheckpoint(playerid);
-        OnMission[playerid] = false;
-
-        new reward = 50 + random(50); // Gaji misi random $50 - $100
-        GivePlayerMoney(playerid, reward);
-
-        if (MissionType[playerid] == 1)
+        if (MissionType[playerid] == 1) // TAKSI / OJOL
         {
-            SendClientMessage(playerid, 0x00FF00FF, "JOB: Penumpang telah sampai. Anda menerima pembayaran tunai!");
+            if (!IsPlayerInAnyVehicle(playerid)) return SendClientMessage(playerid, 0xFF0000FF, "JOB: Anda harus tetap di dalam kendaraan untuk melayani penumpang!");
+
+            if (MissionStep[playerid] == 1) // Fase Jemput Pelanggan (Ada NPC)
+            {
+                DisablePlayerCheckpoint(playerid);
+                if (MissionActor[playerid] != -1)
+                {
+                    DestroyActor(MissionActor[playerid]);
+                    MissionActor[playerid] = -1;
+                }
+
+                MissionStep[playerid] = 2; // Lanjut ke fase antar
+
+                // Beri lokasi tujuan (baru)
+                new rand = random(sizeof(MissionPoints));
+                new Float:rx = MissionPoints[rand][0];
+                new Float:ry = MissionPoints[rand][1];
+                new Float:rz = MissionPoints[rand][2];
+                SetPlayerCheckpoint(playerid, rx, ry, rz, 4.0);
+
+                SendClientMessage(playerid, 0x00FF00FF, "JOB: Penumpang telah naik ke kendaraan! Antar ke lokasi merah (Minimap).");
+            }
+            else if (MissionStep[playerid] == 2) // Fase Antar ke Tujuan
+            {
+                DisablePlayerCheckpoint(playerid);
+                OnMission[playerid] = false;
+                MissionStep[playerid] = 0;
+                MissionType[playerid] = 0;
+
+                new reward = 80 + random(70); // Gaji Taksi $80 - $150
+                GivePlayerMoney(playerid, reward);
+
+                new str[128];
+                format(str, sizeof(str), "JOB: Penumpang telah sampai di tujuan. Anda dibayar tunai sebesar $%d!", reward);
+                SendClientMessage(playerid, 0x00FF00FF, str);
+            }
         }
-        else if (MissionType[playerid] == 2)
+        else if (MissionType[playerid] == 2) // KURIR PAKET
         {
-            SendClientMessage(playerid, 0x00FF00FF, "JOB: Paket berhasil diantar. Anda menerima pembayaran tunai!");
+            if (IsPlayerInAnyVehicle(playerid)) return SendClientMessage(playerid, 0xFF0000FF, "JOB: Anda harus turun dari kendaraan untuk memberikan paket ke pelanggan!");
+
+            if (MissionStep[playerid] == 1) // Bertemu Pelanggan NPC
+            {
+                DisablePlayerCheckpoint(playerid);
+                if (MissionActor[playerid] != -1)
+                {
+                    DestroyActor(MissionActor[playerid]);
+                    MissionActor[playerid] = -1;
+                }
+
+                OnMission[playerid] = false;
+                MissionStep[playerid] = 0;
+                MissionType[playerid] = 0;
+
+                new reward = 50 + random(50); // Gaji Kurir $50 - $100
+                GivePlayerMoney(playerid, reward);
+
+                new str[128];
+                format(str, sizeof(str), "JOB: Paket berhasil diserahkan ke pelanggan. Anda menerima pembayaran $%d!", reward);
+                SendClientMessage(playerid, 0x00FF00FF, str);
+            }
         }
-
-        new str[128];
-        format(str, sizeof(str), "Uang Diterima: $%d", reward);
-        SendClientMessage(playerid, 0xFFFF00FF, str);
-
-        MissionType[playerid] = 0;
     }
     return 1;
 }
