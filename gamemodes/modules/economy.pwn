@@ -7,7 +7,7 @@ public Economy_GlobalTimer()
 {
     for(new i = 0; i < MAX_PLAYERS; i++)
     {
-        if(IsPlayerConnected(i) && IsLoggedIn[i])
+        if(IsPlayerConnected(i) && IsLoggedIn[i] && !IsPlayerNPC(i))
         {
             PlayerInfo[i][pHunger] -= 2;
             PlayerInfo[i][pThirst] -= 3;

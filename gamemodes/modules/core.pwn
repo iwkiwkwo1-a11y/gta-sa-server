@@ -11,6 +11,8 @@ stock GetAccountFile(playerid, filename[], len)
 
 stock Core_OnPlayerConnect(playerid)
 {
+    if (IsPlayerNPC(playerid)) return 1;
+
     IsLoggedIn[playerid] = false;
     PlayerInfo[playerid][pMoney] = 0;
     PlayerInfo[playerid][pScore] = 0;
@@ -44,10 +46,13 @@ stock Core_OnPlayerConnect(playerid)
         ShowPlayerDialog(playerid, DIALOG_LOGIN, DIALOG_STYLE_PASSWORD, "Login", "Selamat datang kembali!\nSilakan masukkan password Anda:", "Login", "Keluar");
     else
         ShowPlayerDialog(playerid, DIALOG_REGISTER, DIALOG_STYLE_INPUT, "Register", "Selamat datang!\nAkun belum terdaftar.\nBuat password baru:", "Daftar", "Keluar");
+
+    return 1;
 }
 
 stock SavePlayerData(playerid)
 {
+    if (IsPlayerNPC(playerid)) return;
     if (!IsLoggedIn[playerid]) return;
     new file[128];
     GetAccountFile(playerid, file, sizeof(file));

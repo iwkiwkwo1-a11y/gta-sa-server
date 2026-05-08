@@ -11,6 +11,7 @@
 #include "modules/job.pwn"
 #include "modules/house.pwn"
 #include "modules/vehicle.pwn"
+#include "modules/npc.pwn"
 
 main()
 {
@@ -26,6 +27,7 @@ public OnGameModeInit()
     AddPlayerClass(0, 1958.3783, 1343.1572, 15.3746, 269.1425, 0, 0, 0, 0, 0, 0);
 
     House_Init();
+    NPC_OnGameModeInit();
     SetTimer("Economy_GlobalTimer", 60000, true);
     return 1;
 }
@@ -56,6 +58,12 @@ public OnPlayerDisconnect(playerid, reason)
 
 public OnPlayerSpawn(playerid)
 {
+    if (IsPlayerNPC(playerid))
+    {
+        NPC_OnPlayerSpawn(playerid);
+        return 1;
+    }
+
     if (!IsLoggedIn[playerid]) { SendClientMessage(playerid, 0xFF0000FF, "Anda harus login!"); Kick(playerid); return 1; }
 
     // 1. Cek apakah memiliki Last Position (Bukan 0.0 dari registrasi awal)
