@@ -24,6 +24,11 @@ stock Core_OnPlayerConnect(playerid)
     PlayerInfo[playerid][pDrink] = 0;
     PlayerInfo[playerid][pPaydayTimer] = 0;
     PlayerInfo[playerid][pHouseID] = 0;
+    PlayerInfo[playerid][pPosX] = 0.0;
+    PlayerInfo[playerid][pPosY] = 0.0;
+    PlayerInfo[playerid][pPosZ] = 0.0;
+    PlayerInfo[playerid][pInt] = 0;
+    PlayerInfo[playerid][pVW] = 0;
     format(PlayerInfo[playerid][pPassword], 129, "");
 
     OnMission[playerid] = false;
@@ -50,6 +55,14 @@ stock SavePlayerData(playerid)
     PlayerInfo[playerid][pMoney] = GetPlayerMoney(playerid);
     PlayerInfo[playerid][pScore] = GetPlayerScore(playerid);
 
+    new Float:x, Float:y, Float:z;
+    GetPlayerPos(playerid, x, y, z);
+    PlayerInfo[playerid][pPosX] = x;
+    PlayerInfo[playerid][pPosY] = y;
+    PlayerInfo[playerid][pPosZ] = z;
+    PlayerInfo[playerid][pInt] = GetPlayerInterior(playerid);
+    PlayerInfo[playerid][pVW] = GetPlayerVirtualWorld(playerid);
+
     new File:handleWrite = fopen(file, io_write);
     if (handleWrite)
     {
@@ -67,6 +80,11 @@ stock SavePlayerData(playerid)
         format(writestr, sizeof(writestr), "Drink=%d\n", PlayerInfo[playerid][pDrink]); fwrite(handleWrite, writestr);
         format(writestr, sizeof(writestr), "PaydayTimer=%d\n", PlayerInfo[playerid][pPaydayTimer]); fwrite(handleWrite, writestr);
         format(writestr, sizeof(writestr), "HouseID=%d\n", PlayerInfo[playerid][pHouseID]); fwrite(handleWrite, writestr);
+        format(writestr, sizeof(writestr), "PosX=%f\n", PlayerInfo[playerid][pPosX]); fwrite(handleWrite, writestr);
+        format(writestr, sizeof(writestr), "PosY=%f\n", PlayerInfo[playerid][pPosY]); fwrite(handleWrite, writestr);
+        format(writestr, sizeof(writestr), "PosZ=%f\n", PlayerInfo[playerid][pPosZ]); fwrite(handleWrite, writestr);
+        format(writestr, sizeof(writestr), "Int=%d\n", PlayerInfo[playerid][pInt]); fwrite(handleWrite, writestr);
+        format(writestr, sizeof(writestr), "VW=%d\n", PlayerInfo[playerid][pVW]); fwrite(handleWrite, writestr);
         fclose(handleWrite);
     }
 }
@@ -103,6 +121,11 @@ stock Core_OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
             format(writestr, sizeof(writestr), "Drink=0\n"); fwrite(handle, writestr);
             format(writestr, sizeof(writestr), "PaydayTimer=0\n"); fwrite(handle, writestr);
             format(writestr, sizeof(writestr), "HouseID=0\n"); fwrite(handle, writestr);
+            format(writestr, sizeof(writestr), "PosX=0.0\n"); fwrite(handle, writestr);
+            format(writestr, sizeof(writestr), "PosY=0.0\n"); fwrite(handle, writestr);
+            format(writestr, sizeof(writestr), "PosZ=0.0\n"); fwrite(handle, writestr);
+            format(writestr, sizeof(writestr), "Int=0\n"); fwrite(handle, writestr);
+            format(writestr, sizeof(writestr), "VW=0\n"); fwrite(handle, writestr);
             fclose(handle);
 
             SendClientMessage(playerid, 0x00FF00FF, "Registrasi berhasil! Silakan login.");
@@ -143,6 +166,11 @@ stock Core_OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
                     else if (!strcmp(key, "Drink", true)) PlayerInfo[playerid][pDrink] = strval(val);
                     else if (!strcmp(key, "PaydayTimer", true)) PlayerInfo[playerid][pPaydayTimer] = strval(val);
                     else if (!strcmp(key, "HouseID", true)) PlayerInfo[playerid][pHouseID] = strval(val);
+                    else if (!strcmp(key, "PosX", true)) PlayerInfo[playerid][pPosX] = floatstr(val);
+                    else if (!strcmp(key, "PosY", true)) PlayerInfo[playerid][pPosY] = floatstr(val);
+                    else if (!strcmp(key, "PosZ", true)) PlayerInfo[playerid][pPosZ] = floatstr(val);
+                    else if (!strcmp(key, "Int", true)) PlayerInfo[playerid][pInt] = strval(val);
+                    else if (!strcmp(key, "VW", true)) PlayerInfo[playerid][pVW] = strval(val);
                 }
             }
             fclose(handle);

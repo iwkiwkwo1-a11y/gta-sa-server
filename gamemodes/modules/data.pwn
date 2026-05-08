@@ -35,7 +35,12 @@ enum pInfo
     pFood,
     pDrink,
     pPaydayTimer,
-    pHouseID
+    pHouseID,
+    Float:pPosX,
+    Float:pPosY,
+    Float:pPosZ,
+    pInt,
+    pVW
 };
 new PlayerInfo[MAX_PLAYERS][pInfo];
 new bool:IsLoggedIn[MAX_PLAYERS];

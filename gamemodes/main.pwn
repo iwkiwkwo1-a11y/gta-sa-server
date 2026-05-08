@@ -58,7 +58,16 @@ public OnPlayerSpawn(playerid)
 {
     if (!IsLoggedIn[playerid]) { SendClientMessage(playerid, 0xFF0000FF, "Anda harus login!"); Kick(playerid); return 1; }
 
-    if (PlayerInfo[playerid][pHouseID] > 0)
+    // 1. Cek apakah memiliki Last Position (Bukan 0.0 dari registrasi awal)
+    if (PlayerInfo[playerid][pPosX] != 0.0 && PlayerInfo[playerid][pPosY] != 0.0)
+    {
+        SetPlayerPos(playerid, PlayerInfo[playerid][pPosX], PlayerInfo[playerid][pPosY], PlayerInfo[playerid][pPosZ]);
+        SetPlayerInterior(playerid, PlayerInfo[playerid][pInt]);
+        SetPlayerVirtualWorld(playerid, PlayerInfo[playerid][pVW]);
+        SendClientMessage(playerid, 0x00FF00FF, "SERVER: Anda spawn di posisi terakhir Anda keluar.");
+    }
+    // 2. Jika tidak ada posisi terakhir, tapi punya rumah (Misal akun lama yang belum save posisi)
+    else if (PlayerInfo[playerid][pHouseID] > 0)
     {
         new houseIdx = PlayerInfo[playerid][pHouseID] - 1;
         if (houseIdx >= 0 && houseIdx < MAX_HOUSES)
@@ -66,9 +75,10 @@ public OnPlayerSpawn(playerid)
             SetPlayerPos(playerid, HouseInfo[houseIdx][hExtX], HouseInfo[houseIdx][hExtY], HouseInfo[houseIdx][hExtZ]);
             SetPlayerInterior(playerid, 0);
             SetPlayerVirtualWorld(playerid, 0);
-            SendClientMessage(playerid, 0x00FF00FF, "HOUSE: Anda spawn di rumah.");
+            SendClientMessage(playerid, 0x00FF00FF, "HOUSE: Anda spawn di rumah Anda.");
         }
     }
+    // 3. Posisi dasar server (default) sudah ditangani oleh AddPlayerClass di OnGameModeInit
     return 1;
 }
 
